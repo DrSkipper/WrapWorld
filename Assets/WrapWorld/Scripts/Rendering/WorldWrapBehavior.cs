@@ -5,17 +5,40 @@ using System;
 using UnityEditor;
 #endif
 
+/**
+ * WorldWrapBehavior:
+ * Handles the rendering of one side of a visual wrap or portal in the world.
+ * Credit to the 'Gater (Portal System)' Unity package for a lot of the code (simplified here to focus soley on rendering).
+ */
 [ExecuteInEditMode]
-[RequireComponent(typeof(MeshFilter))]
-[RequireComponent(typeof(MeshRenderer))]
 public class WorldWrapBehavior : MonoBehaviour
 {
+    /**
+     * PairedWrapObject:
+     * The other end of this world wrap/portal
+     */
     public WorldWrapBehavior PairedWrapObject;
-    public Material PairedPortalSkybox;
-    [HideInInspector] public Material NullPairedPortalSkybox;
-    public GameObject[] PortalCamObjs;
-    public GameObject SceneviewRender;
 
+    /**
+     * Cameras:
+     * The cameras to be used for rendering this side of the wrap. They are positioned automatically
+     * Index 0: For in-game/player perspective
+     * Index 1: For editor perspective
+     */
+    public Camera[] Cameras;
+
+    /**
+     * WrapRenderers:
+     * The MeshRenderer object for rendering the view from the other side of the wrap.
+     * Index 0: For in-game/player perspective
+     * Index 1: For editor perspective
+     */
+    public MeshRenderer[] WrapRenderers;
+
+    /**
+     * ViewSettings:
+     * Contains parameters for modifying the visual of the wrap to make it look wavy/shimmery and stuff.
+     */
     [Serializable]
     public class ViewSettingsClass
     {
@@ -52,9 +75,10 @@ public class WorldWrapBehavior : MonoBehaviour
         public DistorsionClass Distorsion;
     }
     public ViewSettingsClass ViewSettings;
-
-    //----------
-
+    
+    /**
+     * Private
+     */
     private Material[] PortalMaterials;
     private RenderTexture[] RenderTexts;
     private Vector2 CurrentProjectionResolution;
@@ -62,6 +86,7 @@ public class WorldWrapBehavior : MonoBehaviour
 
     void OnEnable()
     {
+        // Create the render texture array. Index 0 is for in-game/player perspective, Index 1 is for the editor perspective.
 #if UNITY_EDITOR
         RenderTexts = new RenderTexture[2];
 #else
@@ -69,19 +94,19 @@ public class WorldWrapBehavior : MonoBehaviour
 #endif
         PortalMaterials = new Material[RenderTexts.Length];
         
-        InitPortalCamObjsCullingMask = new int[PortalCamObjs.Length];
+        InitPortalCamObjsCullingMask = new int[this.Cameras.Length];
 
         for (int i = 0; i < PortalMaterials.Length; i++) //Generate "Portal" and "Clipping plane" materials
             if (!PortalMaterials[i])
                 PortalMaterials[i] = new Material(Shader.Find("Gater/UV Remap"));
-        
-        if (!NullPairedPortalSkybox)
-            NullPairedPortalSkybox = new Material(Shader.Find("Standard"));
 
         //Apply custom settings to the portal components
-        GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        GetComponent<MeshRenderer>().receiveShadows = false;
-        GetComponent<MeshRenderer>().sharedMaterial = PortalMaterials[0];
+        for (int i = 0; i < this.WrapRenderers.Length; ++i)
+        {
+            this.WrapRenderers[i].shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            this.WrapRenderers[i].receiveShadows = false;
+            this.WrapRenderers[i].sharedMaterial = PortalMaterials[i];
+        }
 
 #if UNITY_EDITOR
         EditorApplication.update = null;
@@ -103,7 +128,8 @@ public class WorldWrapBehavior : MonoBehaviour
             if (InGameCamera.nearClipPlane > .01f)
                 Debug.LogWarning("The nearClipPlane of 'Main Camera' is not equal to 0.01");
 
-            PortalMesh = GetComponent<MeshFilter>().sharedMesh; //Acquire current portal mesh
+            if (this.WrapRenderers.Length > 0)
+                PortalMesh = this.WrapRenderers[0].GetComponent<MeshFilter>().sharedMesh; //Acquire current portal mesh
 
             ViewSettings.Projection.Resolution = new Vector2(ViewSettings.Projection.Resolution.x < 1 ? 1 : ViewSettings.Projection.Resolution.x, ViewSettings.Projection.Resolution.y < 1 ? 1 : ViewSettings.Projection.Resolution.y);
 
@@ -115,7 +141,7 @@ public class WorldWrapBehavior : MonoBehaviour
 #if UNITY_EDITOR
                     DestroyImmediate(TempRenderText, false);
 #else
-						Destroy (TempRenderText);
+					Destroy(TempRenderText);
 #endif
                 }
                 else
@@ -133,7 +159,7 @@ public class WorldWrapBehavior : MonoBehaviour
                         if (EditorApplication.isPlaying)
                             Destroy(RenderTexts[i]);
 #else
-							Destroy (RenderTexts [i]);
+						Destroy(RenderTexts[i]);
 #endif
                     }
                     else
@@ -161,92 +187,70 @@ public class WorldWrapBehavior : MonoBehaviour
             Tools.visibleLayers = SceneTabLayerMask;
 
             //Generate projection plane for Sceneview
-            if (this.SceneviewRender != null)
+            if (this.WrapRenderers.Length > 1)
             {
-                SceneviewRender.layer = 4;
+                this.WrapRenderers[1].gameObject.layer = 4;
 
-                SceneviewRender.transform.localPosition = new Vector3(0, 0, .0001f);
+                this.WrapRenderers[1].transform.localPosition = new Vector3(0, 0, .0001f);
 
-                SceneviewRender.GetComponent<MeshFilter>().sharedMesh = PortalMesh;
-                SceneviewRender.GetComponent<MeshRenderer>().sharedMaterial = PortalMaterials[1];
+                this.WrapRenderers[1].GetComponent<MeshFilter>().sharedMesh = PortalMesh;
+                this.WrapRenderers[1].sharedMaterial = PortalMaterials[1];
 
                 //Apply render texture to the scene portal material
-                if (PortalMaterials.Length > 1)
-                    SceneviewRender.GetComponent<MeshRenderer>().sharedMaterial.SetTexture("_MainTex", InGameCamera && PairedWrapObject.RenderTexts[1] ? PairedWrapObject.RenderTexts[1] : null);
+                if (this.PortalMaterials.Length > 1)
+                    this.WrapRenderers[1].sharedMaterial.SetTexture("_MainTex", InGameCamera && PairedWrapObject.RenderTexts[1] ? PairedWrapObject.RenderTexts[1] : null);
             }
 #endif
 
             //Apply render texture to the game portal material
             if (PortalMaterials.Length > 0)
-                GetComponent<MeshRenderer>().sharedMaterial.SetTexture("_MainTex", InGameCamera && PairedWrapObject.RenderTexts[0] ? PairedWrapObject.RenderTexts[0] : null);
-            
+                this.WrapRenderers[0].sharedMaterial.SetTexture("_MainTex", InGameCamera && PairedWrapObject.RenderTexts[0] ? PairedWrapObject.RenderTexts[0] : null);
+
             //Manage distorstion pattern settings
-            GetComponent<MeshRenderer>().sharedMaterial.SetInt("_EnableDistorsionPattern", ViewSettings.Distorsion.EnableDistorsion ? 1 : 0);
-            GetComponent<MeshRenderer>().sharedMaterial.SetTexture("_DistorsionPattern", ViewSettings.Distorsion.Pattern);
-            GetComponent<MeshRenderer>().sharedMaterial.SetColor("_DistorsionPatternColor", ViewSettings.Distorsion.Color);
-            GetComponent<MeshRenderer>().sharedMaterial.SetInt("_DistorsionPatternTiling", ViewSettings.Distorsion.Tiling);
-            GetComponent<MeshRenderer>().sharedMaterial.SetFloat("_DistorsionPatternSpeedX", -ViewSettings.Distorsion.SpeedX);
-            GetComponent<MeshRenderer>().sharedMaterial.SetFloat("_DistorsionPatternSpeedY", -ViewSettings.Distorsion.SpeedY);
+            this.WrapRenderers[0].sharedMaterial.SetInt("_EnableDistorsionPattern", ViewSettings.Distorsion.EnableDistorsion ? 1 : 0);
+            this.WrapRenderers[0].sharedMaterial.SetTexture("_DistorsionPattern", ViewSettings.Distorsion.Pattern);
+            this.WrapRenderers[0].sharedMaterial.SetColor("_DistorsionPatternColor", ViewSettings.Distorsion.Color);
+            this.WrapRenderers[0].sharedMaterial.SetInt("_DistorsionPatternTiling", ViewSettings.Distorsion.Tiling);
+            this.WrapRenderers[0].sharedMaterial.SetFloat("_DistorsionPatternSpeedX", -ViewSettings.Distorsion.SpeedX);
+            this.WrapRenderers[0].sharedMaterial.SetFloat("_DistorsionPatternSpeedY", -ViewSettings.Distorsion.SpeedY);
 
             //Generate camera for the portal rendering
-            /*for (int j = 0; j < PortalCamObjs.Length; j++)
+            for (int j = 0; j < this.Cameras.Length; j++)
             {
                 if (j < ViewSettings.Recursion.Steps + 1)
                 {
-                    if (!PortalCamObjs[j])
+                    if (this.Cameras[j] != null)
                     {
-                        PortalCamObjs[j] = new GameObject(transform.name + " Camera " + j);
-
-                        PortalCamObjs[j].tag = "Untagged";
-
-                        PortalCamObjs[j].transform.parent = transform;
-                        PortalCamObjs[j].AddComponent<Camera>();
-                        PortalCamObjs[j].GetComponent<Camera>().enabled = false;
-                        InitPortalCamObjsCullingMask[j] = PortalCamObjs[j].GetComponent<Camera>().cullingMask;
-                        PortalCamObjs[j].GetComponent<Camera>().nearClipPlane = .01f;
-
-                        PortalCamObjs[j].AddComponent<Skybox>();
-                    }
-                    else
-                    {
-                        if (PortalCamObjs[j].name != transform.name + " Camera " + j)
-                            PortalCamObjs[j].name = transform.name + " Camera " + j;
-
-                        if (PortalCamObjs[j].GetComponent<Camera>().depth != InGameCamera.depth - 1)
-                            PortalCamObjs[j].GetComponent<Camera>().depth = InGameCamera.depth - 1;
-
                         //Acquire settings from Scene/Game camera, to apply on Portal camera
-                        if (InGameCamera)
+                        if (InGameCamera != null)
                         {
-                            PortalCamObjs[j].GetComponent<Camera>().renderingPath = InGameCamera.renderingPath;
-                            PortalCamObjs[j].GetComponent<Camera>().useOcclusionCulling = InGameCamera.useOcclusionCulling;
-                            PortalCamObjs[j].GetComponent<Camera>().allowHDR = InGameCamera.allowHDR;
+                            this.Cameras[j].depth = InGameCamera.depth - 1;
+                            this.Cameras[j].renderingPath = InGameCamera.renderingPath;
+                            this.Cameras[j].useOcclusionCulling = InGameCamera.useOcclusionCulling;
+                            this.Cameras[j].allowHDR = InGameCamera.allowHDR;
                         }
                     }
-
-                    if (PairedWrapObject.PortalCamObjs[j])
-                        PairedWrapObject.PortalCamObjs[j].GetComponent<Skybox>().material = ViewSettings.Recursion.CustomFinalStep && (j > 0 && j == ViewSettings.Recursion.Steps) ? ViewSettings.Recursion.CustomFinalStep : (!PairedPortalSkybox && (j > 0 && j == ViewSettings.Recursion.Steps) ? NullPairedPortalSkybox : PairedPortalSkybox);
                 }
                 else
                 {
 #if UNITY_EDITOR
                     if (!EditorApplication.isPlaying)
-                        DestroyImmediate(PortalCamObjs[j], false);
+                        DestroyImmediate(this.Cameras[j].gameObject, false);
                     if (EditorApplication.isPlaying)
-                        Destroy(PortalCamObjs[j]);
+                        Destroy(this.Cameras[j].gameObject);
 #else
-						Destroy (PortalCamObjs [j]);
+						Destroy(this.Cameras[j].gameObject);
 #endif
                 }
-            }*/
+            }
 
             gameObject.layer = 1;
 
             //Move portal cameras and render it to rendertexture
             if (PairedWrapObject != null)
             {
-                Vector3[] PortalCamPos = new Vector3[PortalCamObjs.Length];
-                Quaternion[] PortalCamRot = new Quaternion[PortalCamObjs.Length];
+                Vector3[] PortalCamPos = new Vector3[this.Cameras.Length];
+                Quaternion[] PortalCamRot = new Quaternion[this.Cameras.Length];
                 
                 for (int i = 0; i < RenderTexts.Length; i++)
                 {
@@ -254,18 +258,17 @@ public class WorldWrapBehavior : MonoBehaviour
                     {
                         for (int j = ViewSettings.Recursion.Steps; j >= 0; j--)
                         {
-                            if (PortalCamObjs[j])
+                            if (this.Cameras[j] != null)
                             {
                                 //Move portal camera to position/rotation of Scene/Game camera
                                 Camera SceneCamera = null;
-
 #if UNITY_EDITOR
                                 SceneCamera = SceneView.GetAllSceneCameras().Length > 0 ? SceneView.GetAllSceneCameras()[0] : null;
 #endif
 
-                                PortalCamObjs[j].GetComponent<Camera>().aspect = (i == 1 && SceneCamera ? SceneCamera.aspect : InGameCamera.aspect);
-                                PortalCamObjs[j].GetComponent<Camera>().fieldOfView = (i == 1 && SceneCamera ? SceneCamera.fieldOfView : InGameCamera.fieldOfView);
-                                PortalCamObjs[j].GetComponent<Camera>().farClipPlane = (i == 1 && SceneCamera ? SceneCamera.farClipPlane : InGameCamera.farClipPlane);
+                                this.Cameras[j].aspect = (i == 1 && SceneCamera ? SceneCamera.aspect : InGameCamera.aspect);
+                                this.Cameras[j].fieldOfView = (i == 1 && SceneCamera ? SceneCamera.fieldOfView : InGameCamera.fieldOfView);
+                                this.Cameras[j].farClipPlane = (i == 1 && SceneCamera ? SceneCamera.farClipPlane : InGameCamera.farClipPlane);
 
                                 PortalCamPos[j] = PairedWrapObject.transform.InverseTransformPoint(i == 1 && SceneCamera ? SceneCamera.transform.position : InGameCamera.transform.position);
 
@@ -276,24 +279,23 @@ public class WorldWrapBehavior : MonoBehaviour
 
                                 PortalCamRot[j] = Quaternion.AngleAxis(180.0f, new Vector3(0, 1, 0)) * PortalCamRot[j];
 
-                                PortalCamObjs[j].transform.localPosition = PortalCamPos[j];
-                                PortalCamObjs[j].transform.localRotation = PortalCamRot[j];
+                                this.Cameras[j].transform.localPosition = PortalCamPos[j];
+                                this.Cameras[j].transform.localRotation = PortalCamRot[j];
 
                                 //Render inside portal cameras to render texture
                                 if (j > 0 && j == ViewSettings.Recursion.Steps)
-                                    PortalCamObjs[j].GetComponent<Camera>().cullingMask = 0;
+                                    this.Cameras[j].cullingMask = 0;
                                 else
                                 {
-                                    PortalCamObjs[j].GetComponent<Camera>().cullingMask = InGameCamera.cullingMask;
+                                    this.Cameras[j].cullingMask = InGameCamera.cullingMask;
                                 }
 
-                                PortalCamObjs[j].GetComponent<Camera>().targetTexture = TempRenderText;
-
-                                PortalCamObjs[j].GetComponent<Camera>().Render();
+                                this.Cameras[j].targetTexture = TempRenderText;
+                                this.Cameras[j].Render();
 
                                 Graphics.Blit(TempRenderText, RenderTexts[i]);
 
-                                PortalCamObjs[j].GetComponent<Camera>().targetTexture = null;
+                                this.Cameras[j].targetTexture = null;
                             }
                         }
                     }
