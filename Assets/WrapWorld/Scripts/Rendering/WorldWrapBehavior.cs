@@ -75,6 +75,12 @@ public class WorldWrapBehavior : MonoBehaviour
         public DistorsionClass Distorsion;
     }
     public ViewSettingsClass ViewSettings;
+
+    /**
+     * ForceNoEditorUpdateDelegate:
+     * Allows the wrap visualization to update in editor while the game isn't playing, may have side effects if the 'EditorApplication.update' callback is used somewhere, i.e. CSGModel code.
+     */
+    public bool ForceNoEditorUpdateDelegate = false;
     
     /**
      * Private
@@ -90,7 +96,7 @@ public class WorldWrapBehavior : MonoBehaviour
 #if UNITY_EDITOR
         RenderTexts = new RenderTexture[2];
 #else
-			RenderTexts = new RenderTexture [1];
+		RenderTexts = new RenderTexture[1];
 #endif
         PortalMaterials = new Material[RenderTexts.Length];
         
@@ -109,7 +115,8 @@ public class WorldWrapBehavior : MonoBehaviour
         }
 
 #if UNITY_EDITOR
-        EditorApplication.update = null;
+        if (this.ForceNoEditorUpdateDelegate)
+            EditorApplication.update = null;
 #endif
     }
 
@@ -125,9 +132,6 @@ public class WorldWrapBehavior : MonoBehaviour
         }
         else
         {
-            if (InGameCamera.nearClipPlane > .01f)
-                Debug.LogWarning("The nearClipPlane of 'Main Camera' is not equal to 0.01");
-
             if (this.WrapRenderers.Length > 0)
                 PortalMesh = this.WrapRenderers[0].GetComponent<MeshFilter>().sharedMesh; //Acquire current portal mesh
 
