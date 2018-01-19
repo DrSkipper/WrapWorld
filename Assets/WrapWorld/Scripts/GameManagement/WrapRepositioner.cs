@@ -7,7 +7,7 @@ public class WrapRepositioner : MonoBehaviour
     public Transform LowerBounds;
     //TODO: Left/Right bounds, Front/Back bounds
 
-    void FixedUpdate()
+    void Update()
     {
         float yDiff = this.UpperBounds.position.y - this.LowerBounds.position.y;
         for (int i = 0; i < this.ObjectsToTrack.Length; ++i)
