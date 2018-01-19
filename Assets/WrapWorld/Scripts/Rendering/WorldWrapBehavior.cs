@@ -57,7 +57,6 @@ public class WorldWrapBehavior : MonoBehaviour
         public class RecursionClass
         {
             [Range(1, 20)] public int Steps = 1;
-            public Material CustomFinalStep;
         }
         public RecursionClass Recursion;
 
@@ -216,77 +215,37 @@ public class WorldWrapBehavior : MonoBehaviour
             //Generate camera for the portal rendering
             for (int j = 0; j < this.Cameras.Length; j++)
             {
-                if (j < ViewSettings.Recursion.Steps + 1)
+                if (this.Cameras[j] != null)
                 {
-                    if (this.Cameras[j] != null)
+                    //Acquire settings from Scene/Game camera, to apply on Portal camera
+                    if (InGameCamera != null)
                     {
-                        //Acquire settings from Scene/Game camera, to apply on Portal camera
-                        if (InGameCamera != null)
-                        {
-                            this.Cameras[j].depth = InGameCamera.depth - 1;
-                            this.Cameras[j].renderingPath = InGameCamera.renderingPath;
-                            this.Cameras[j].useOcclusionCulling = InGameCamera.useOcclusionCulling;
-                            this.Cameras[j].allowHDR = InGameCamera.allowHDR;
-                        }
+                        this.Cameras[j].depth = InGameCamera.depth - 1;
+                        this.Cameras[j].renderingPath = InGameCamera.renderingPath;
+                        this.Cameras[j].useOcclusionCulling = InGameCamera.useOcclusionCulling;
+                        this.Cameras[j].allowHDR = InGameCamera.allowHDR;
                     }
-                }
-                else
-                {
-#if UNITY_EDITOR
-                    if (!EditorApplication.isPlaying)
-                        DestroyImmediate(this.Cameras[j].gameObject, false);
-                    if (EditorApplication.isPlaying)
-                        Destroy(this.Cameras[j].gameObject);
-#else
-						Destroy(this.Cameras[j].gameObject);
-#endif
                 }
             }
 
             //Move portal cameras and render it to rendertexture
             if (PairedWrapObject != null)
             {
-                Vector3 PortalCamPos;
-                Quaternion PortalCamRot;
-
-                Camera SceneCamera = null;
+                Camera sceneCamera = null;
 #if UNITY_EDITOR
-                SceneCamera = SceneView.GetAllSceneCameras().Length > 0 ? SceneView.GetAllSceneCameras()[0] : null;
+                sceneCamera = SceneView.GetAllSceneCameras().Length > 0 ? SceneView.GetAllSceneCameras()[0] : null;
 #endif
 
                 for (int i = 0; i < RenderTexts.Length; i++)
                 {
-                    if (RenderTexts[i])
+                    if (this.RenderTexts[i] != null)
                     {
                         for (int j = ViewSettings.Recursion.Steps; j >= 0; j--)
                         {
                             if (this.Cameras[i] != null)
                             {
                                 //Move portal camera to position/rotation of Scene/Game camera
-                                this.Cameras[i].aspect = (i == 1 && SceneCamera ? SceneCamera.aspect : InGameCamera.aspect);
-                                this.Cameras[i].fieldOfView = (i == 1 && SceneCamera ? SceneCamera.fieldOfView : InGameCamera.fieldOfView);
-                                this.Cameras[i].farClipPlane = (i == 1 && SceneCamera ? SceneCamera.farClipPlane : InGameCamera.farClipPlane);
-
-                                PortalCamPos = PairedWrapObject.transform.InverseTransformPoint(i == 1 && SceneCamera ? SceneCamera.transform.position : InGameCamera.transform.position);
-
-                                PortalCamPos.x = -PortalCamPos.x;
-                                PortalCamPos.z = -PortalCamPos.z + j * (Vector3.Distance(transform.position, PairedWrapObject.transform.position) / 5);
-
-                                PortalCamRot = Quaternion.Inverse(PairedWrapObject.transform.rotation) * (i == 1 && SceneCamera ? SceneCamera.transform.rotation : InGameCamera.transform.rotation);
-
-                                PortalCamRot = Quaternion.AngleAxis(180.0f, new Vector3(0, 1, 0)) * PortalCamRot;
-
-                                this.Cameras[i].transform.localPosition = PortalCamPos;
-                                this.Cameras[i].transform.localRotation = PortalCamRot;
-
-                                //Render inside portal cameras to render texture
-                                /*if (j > 0 && j == ViewSettings.Recursion.Steps)
-                                    this.Cameras[j].cullingMask = 0;
-                                else
-                                {
-                                    this.Cameras[j].cullingMask = InGameCamera.cullingMask;
-                                }*/
-
+                                prepareCamera(this.Cameras[i], sceneCamera, i, j);
                                 this.Cameras[i].targetTexture = TempRenderText;
                                 this.Cameras[i].Render();
 
@@ -299,5 +258,27 @@ public class WorldWrapBehavior : MonoBehaviour
                 }
             }
         }
+    }
+
+    private void prepareCamera(Camera camera, Camera sceneCamera, int i, int j)
+    {
+        Vector3 PortalCamPos;
+        Quaternion PortalCamRot;
+
+        this.Cameras[i].aspect = (i == 1 && sceneCamera ? sceneCamera.aspect : InGameCamera.aspect);
+        this.Cameras[i].fieldOfView = (i == 1 && sceneCamera ? sceneCamera.fieldOfView : InGameCamera.fieldOfView);
+        this.Cameras[i].farClipPlane = (i == 1 && sceneCamera ? sceneCamera.farClipPlane : InGameCamera.farClipPlane);
+
+        PortalCamPos = PairedWrapObject.transform.InverseTransformPoint(i == 1 && sceneCamera ? sceneCamera.transform.position : InGameCamera.transform.position);
+
+        PortalCamPos.x = -PortalCamPos.x;
+        PortalCamPos.z = -PortalCamPos.z + j * (Vector3.Distance(transform.position, PairedWrapObject.transform.position) / 5);
+
+        PortalCamRot = Quaternion.Inverse(PairedWrapObject.transform.rotation) * (i == 1 && sceneCamera ? sceneCamera.transform.rotation : InGameCamera.transform.rotation);
+
+        PortalCamRot = Quaternion.AngleAxis(180.0f, new Vector3(0, 1, 0)) * PortalCamRot;
+
+        this.Cameras[i].transform.localPosition = PortalCamPos;
+        this.Cameras[i].transform.localRotation = PortalCamRot;
     }
 }
